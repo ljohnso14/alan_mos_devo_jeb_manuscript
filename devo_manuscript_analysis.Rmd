@@ -60,7 +60,7 @@ temp_sum <- df_temp %>%
             Mean = mean(Temp),
             SD = sd(Temp)
             )
-temp_sum # not current values in manuscript; used excel calculations 
+temp_sum  
 ```
 
 Temperature ANOVA - reported in text  
