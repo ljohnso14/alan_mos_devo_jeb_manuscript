@@ -1,0 +1,554 @@
+---
+title: "Development Manuscript Analysis"
+author: "Lauren E Johnson"
+date: "2025-03-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+load packages
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(flextable)
+library(officer)
+library(glmmTMB)
+
+```
+
+**TEMPERATURE DATA - VISUALIZATION AND ANALYSIS** 
+
+Read temperature data
+```{r}
+df_temp <- read.csv(here::here('raw/alan_devo_temp_data.csv'))
+
+# number of observations
+df_temp %>%
+  count(Time) %>%
+  count(n)
+```
+
+**Figure 3.** Variation in temperature (°C) at the different experimental tables for each treatment. Temperature readings were taken every hour throughout the entirety of the experiment. Given the variation in canopy cover over the LED treatment table, we had a logger at both ends of this treatment table.    
+```{r}
+temp_plot <- df_temp %>%
+  ggplot(aes(x=Treatment, y = Temp, fill = Treatment)) + 
+  geom_boxplot() + 
+   scale_x_discrete(labels = function(x) gsub("_", "-", x)) +
+  geom_jitter(width = 0.15, alpha = 0.1) +
+  stat_summary(fun = mean, geom = "point", 
+               shape = 18, size = 3, color = "black") +
+  scale_color_manual(values = c("Control" = "darkgrey", "LED_10" = "deepskyblue4","LED_200" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  scale_fill_manual(values = c("Control" = "darkgrey", "LED_10" = "deepskyblue4","LED_200" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  labs(y = "Temperature (°C)")
+
+temp_plot
+```
+
+**Table 1.** Summary of temperature variation across treatments. All measures in °C. 
+```{r}
+temp_sum <- df_temp %>%
+  group_by(Treatment) %>%
+  summarise(Minimum = min(Temp),
+            Maximum = max(Temp),
+            Range = (max(Temp)-min(Temp)),
+            Mean = mean(Temp),
+            SD = sd(Temp)
+            )
+temp_sum # not current values in manuscript; used excel calculations 
+```
+
+Temperature ANOVA - reported in text  
+```{r}
+anova_model <- aov(Temp ~ Treatment, data = df_temp)
+summary(anova_model)
+TukeyHSD(anova_model)
+```
+
+
+**DEVELOPMENT DATA - ANALYSIS AND VISUALIZATION**
+Loading and formatting data 
+```{r}
+
+df_emergence <- read.csv(here::here('raw/alan_devo_emergence_data.csv'))
+df_pupation <- read.csv(here::here('raw/alan_devo_pupation_data.csv'))
+df_mortality <- read.csv(here::here('raw/alan_devo_mortality_data.csv'))
+
+#make sure dates are formatted correctly as dates
+df_emergence$StartDate <- as.Date(df_emergence$StartDate, format = "%m/%d/%Y")
+df_emergence$EmergeDate <- as.Date(df_emergence$EmergeDate, format = "%m/%d/%Y")
+
+
+df_pupation$StartDate <- as.Date(df_pupation$StartDate, format = "%m/%d/%Y")
+df_pupation$DatetoPupate <- as.Date(df_pupation$DatetoPupate, format = "%m/%d/%Y")
+
+df_mortality$Date <- as.Date(df_mortality$Date, format = "%m/%d/%Y")
+
+# created a combined light type and intensity variable 
+df_pupation <- df_pupation %>%
+  unite("Treatment", Light, Intensity, sep = "_", remove = FALSE) %>%
+  mutate(Treatment = factor(Treatment, levels = c("Control_0", "HPS_10", "HPS_30", 
+                                                  "HPS_60", "HPS_100", "HPS_200","LED_10", "LED_30", 
+                                                  "LED_60", "LED_100", "LED_200"))) 
+
+
+df_emergence <- df_emergence %>%
+  unite("Treatment", Light, Intensity, sep = "_", remove = FALSE) %>%
+  mutate(Treatment = factor(Treatment, levels = c("Control_0", "HPS_10", "HPS_30", 
+                                                  "HPS_60", "HPS_100", "HPS_200","LED_10", "LED_30", 
+                                                  "LED_60", "LED_100", "LED_200"))) 
+
+df_mortality <- df_mortality %>%
+  unite("Treatment", Light, Intensity, sep = "_", remove = FALSE) %>%
+  mutate(Treatment = factor(Treatment, levels = c("Control_0", "HPS_10", "HPS_30", 
+                                                  "HPS_60", "HPS_100", "HPS_200","LED_10", "LED_30", 
+                                                  "LED_60", "LED_100", "LED_200"))) 
+
+```
+
+## Creating summary tables of the pupation and emergence rates grouped by replicate and treatment
+Information included in supplementary information information 
+
+Total number of pupation observations 
+```{r}
+df_pupation %>%
+    summarise(n = n())
+```
+
+**Table S1** Days to pupation summary table grouped by replicate and treatmentS
+```{r, pupation rate replicate summary}
+
+
+rep_sum_pup <- df_pupation %>%
+  group_by(Treatment, Light, Intensity, Rep) %>%
+  summarise(n = n(),
+            median = median(DaystoPupate),
+            mean = mean(DaystoPupate),
+            sd = sd(DaystoPupate),
+            CV = (sd(DaystoPupate, na.rm = TRUE) / mean(DaystoPupate, na.rm = TRUE)) * 100)
+
+rep_sum_pup
+
+# prep to save in word doc
+rep_sum_pup_tab <- flextable(rep_sum_pup) %>%
+  theme_box() %>%  
+  set_caption("Summary of days to pupation group by treatment and replicate") %>%
+  autofit()  
+
+doc <- read_docx()
+
+doc <- body_add_flextable(doc, rep_sum_pup_tab)
+
+# Save the Word document
+#print(doc, target = "rep_sum_pup_tab.docx")
+
+```
+
+**Table 2.** Days to pupation summary table grouped by treatment.
+```{r, pupation rate treatment summary}
+
+treat_sum_pup <- df_pupation %>%
+  group_by(Treatment, Light, Intensity) %>%
+  summarise(n = n(),
+            median = median(DaystoPupate),
+            mean = mean(DaystoPupate),
+            sd = sd(DaystoPupate),
+            CV = (sd(DaystoPupate, na.rm = TRUE) / mean(DaystoPupate, na.rm = TRUE)) * 100)
+
+treat_sum_pup
+
+# prep to save in word doc
+treat_sum_pup_tab <- flextable(treat_sum_pup) %>%
+  theme_box() %>%  
+  set_caption("Summary of days to pupation group by treatment") %>%
+  autofit()  
+
+doc <- read_docx()
+
+doc <- body_add_flextable(doc, treat_sum_pup_tab)
+
+
+#print(doc, target = "treat_sum_pup_tab.docx")
+
+```
+
+Total number of male and female emergence observations 
+```{r}
+df_emergence %>%
+  group_by(Sex) %>%
+    summarise(n = n())
+```
+
+**Table S5.** Days to emergence summary table grouped by replicate, sex, and treatment. 
+```{r, emergence rate replicate summary}
+
+rep_sum_emerge <- df_emergence %>%
+  group_by(Sex, Treatment, Light, Intensity, Rep) %>%
+  summarise(n = n(),
+            median = median(DaystoEmerge),
+            mean = mean(DaystoEmerge),
+            sd = sd(DaystoEmerge),
+            CV = (sd(DaystoEmerge, na.rm = TRUE) / mean(DaystoEmerge, na.rm = TRUE)) * 100)
+
+rep_sum_emerge
+
+# prep to save in word doc
+
+rep_sum_emerge_tab <- flextable(rep_sum_emerge) %>%
+  theme_box() %>%  
+  set_caption("Summary of days to emergence group by replicate and treatment") %>%
+  autofit()  
+
+doc <- read_docx()
+
+doc <- body_add_flextable(doc, rep_sum_emerge_tab)
+
+#print(doc, target = "rep_sum_emerge_tab.docx")
+
+```
+
+**Table 3.** Days to emergence summary table grouped by sex and treatment. 
+```{r, emergence rate treatment summary}
+
+treat_sum_emerge <-df_emergence %>%
+  group_by(Sex, Treatment, Light, Intensity) %>%
+  summarise(n = n(),
+            median = median(DaystoEmerge),
+            mean = mean(DaystoEmerge),
+            sd = sd(DaystoEmerge),
+            CV = (sd(DaystoEmerge, na.rm = TRUE) / mean(DaystoEmerge, na.rm = TRUE)) * 100)
+
+treat_sum_emerge
+
+# prep to save in word doc
+
+treat_sum_emerge_tab <- flextable(treat_sum_emerge) %>%
+  theme_box() %>%  
+  set_caption("Summary of days to emergence group by treatment") %>%
+  autofit()  
+
+doc <- read_docx()
+
+doc <- body_add_flextable(doc, treat_sum_emerge_tab)
+
+#print(doc, target = "treat_sum_emerge_tab.docx")
+
+```
+
+Calculating the coefficient of variance for pupation and emergence 
+```{r}
+cv_pupation <- df_pupation %>%
+  group_by(Treatment, Light, Intensity) %>%
+  summarise(CV = (sd(DaystoPupate, na.rm = TRUE) / mean(DaystoPupate, na.rm = TRUE)) * 100,
+            .groups = "drop")
+
+cv_emergence <- df_emergence %>%
+  group_by(Sex,Treatment, Light, Intensity) %>%
+  summarise(CV = (sd(DaystoEmerge, na.rm = TRUE) / mean(DaystoEmerge, na.rm = TRUE)) * 100,
+            .groups = "drop")
+```
+
+**Figure 4D** Exposure to different types and intensities of ALAN did not cause significant differences in average time to *pupation*, but increased variation in development. (D) bar plot highlighting the coefficient of variance within each light type and intensity combination. 
+```{r, plotting CV pupation}
+
+p <- ggplot(cv_pupation, aes(x = Treatment, y = CV, fill = Light)) + 
+  geom_bar(stat = "identity") + 
+   scale_x_discrete(labels = function(x) gsub("_", "-", x))+
+  scale_color_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  scale_fill_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  labs(y = "Coefficient of Variation (%)", title = "Variation in Days to Pupation by Treatment and Light")
+#4x6
+p
+
+```
+
+**Figure 5d** Exposure to different types of intensities of ALAN did not cause significant differences in average time to adult *emergence*, but increased variation in development. (D) bar plot highlighting the coefficient of variance within each light type and intensity combination. 
+```{r, plotting CV emergence}
+
+p <- ggplot(cv_emergence, aes(x = Treatment, y = CV, fill = Light)) + 
+  geom_bar(stat = "identity") + 
+   scale_x_discrete(labels = function(x) gsub("_", "-", x))+
+  scale_color_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  scale_fill_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  facet_grid(~Sex) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  labs(y = "Coefficient of Variation (%)", title = "Variation in Days to Emergence by Treatment and Light")
+
+p
+```
+
+
+**Figure 4A-C** Exposure to different types and intensities of ALAN did not cause significant differences in average time to *pupation*, but increased variation in development. (A) box plot grouped by light type and intensity, (B) line plot showing mean and standard error grouped by light type and intensity, (C) box plot grouped by light type.
+```{r}
+
+# Boxplot showing all treatments and intensities 
+b1 <- df_pupation %>%
+  ggplot(aes(x=Treatment, y = DaystoPupate, fill = Light)) + 
+  geom_boxplot() + 
+   scale_x_discrete(labels = function(x) gsub("_", "-", x))+
+  geom_jitter(width = 0.15, alpha = 0.1) +
+  scale_color_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  scale_fill_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+  labs(y = "Days to Pupate")
+b1
+
+# Line graph showing mean and standard error
+b2 <- df_pupation %>%
+  group_by(Intensity, Light) %>%
+  ggplot(aes(x=Intensity, y = DaystoPupate, group = Light, color = Light, fill = Light, shape = Light)) + 
+  stat_summary(fun = mean, geom = "point", size = 2, position = position_dodge(width = 5)) +
+    stat_summary(fun = mean, geom = "line", position = position_dodge(width = 5)) +
+    stat_summary(fun.data = "mean_se", geom = "errorbar", width = 5, position = position_dodge(width = 5)) +
+  scale_color_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  scale_fill_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+    labs(y = "Days to Pupate")
+
+b2
+
+# Boxplot collapsing all intensities into HPS and LED
+b3 <- df_pupation %>%
+  ggplot(aes(x=Light, y = DaystoPupate, fill = Light)) + 
+  geom_boxplot() + 
+  geom_jitter(width = 0.15, alpha = 0.1) +
+  scale_color_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  scale_fill_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+    labs(y = "Days to Pupate")
+
+
+b3
+```
+
+
+**Figure 5A-C** Exposure to different types of intensities of ALAN did not cause significant differences in average time to adult *emergence*, but increased variation in development.  (A) box plot grouped by light type and intensity, (B) line plot showing mean and standard error grouped by light type and intensity, (C) box plot grouped by light type.
+```{r}
+# Boxplot showing all treatments and intensities 
+b1 <- df_emergence %>%
+  ggplot(aes(x=Treatment, y = DaystoEmerge, fill = Light)) + 
+  geom_boxplot() + 
+   scale_x_discrete(labels = function(x) gsub("_", "-", x))+
+  geom_jitter(width = 0.15, alpha = 0.1) +
+  scale_color_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  scale_fill_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  facet_wrap(~Sex) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+    labs(y = "Days to Emerge")
+
+
+
+# Line graph showing mean and standard error
+b2 <- df_emergence %>%
+  group_by(Intensity, Light, Sex) %>%
+  ggplot(aes(x=Intensity, y = DaystoEmerge, group = Light, color = Light, fill = Light, shape = Light)) + 
+  stat_summary(fun = mean, geom = "point", size = 2, position = position_dodge(width = 5)) +
+    stat_summary(fun = mean, geom = "line", position = position_dodge(width = 5)) +
+    stat_summary(fun.data = "mean_se", geom = "errorbar", width = 5, position = position_dodge(width = 5)) +
+  scale_color_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  scale_fill_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  facet_wrap(~Sex)+
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+   labs(y = "Days to Emerge")
+
+# Boxplot collapsing all intensities into HPS and LED
+b3 <- df_emergence %>%
+  ggplot(aes(x=Light, y = DaystoEmerge, fill = Light)) + 
+  geom_boxplot() + 
+  geom_jitter(width = 0.15, alpha = 0.1) +
+  scale_color_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  scale_fill_manual(values = c("Control" = "darkgrey", "LED" = "deepskyblue4", "HPS" = "goldenrod1")) +
+  facet_wrap(~Sex) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)) +
+   labs(y = "Days to Emerge")
+
+b1
+b2
+b3
+
+```
+
+PUPATION AND EMERGENCE ANALYSIS 
+To assess the effect of light treatment on mosquito pupation and emergence times, we fitted a generalized linear mixed model (GLMM) using the glmmTMB package in R. We selected a Poisson distribution, which appropriately models count data with minimal variation.
+
+Created data frame without controls 
+```{r}
+df_emergence_wocontrol <- df_emergence %>%
+  filter(Light != "Control")
+df_pupation_wocontrol <- df_pupation %>%
+  filter(Light != "Control")
+```
+
+**Table S2.** Days to pupation GLMM estimates, including spectra, intensity, and their interaction 18 as fixed effects, with replicate as a random effect. Controls are excluded from this model (n = 19 1,046).
+```{r}
+# intensity-dependent (Light + Intensity, w/o control)
+pup1 <- glmmTMB(DaystoPupate ~ Light * Intensity + (1|Rep), 
+        na.action = "na.fail", 
+        family = poisson(), 
+        data = df_pupation_wocontrol)
+
+summary(pup1)
+```
+
+
+
+**Table S3.** Days to pupation GLMM estimates with spectra as fixed effect with levels of HPS, 22 LED, and Control, and replicate as a random effect (n = 1,158). Estimated coefficients represent 23 estimated differences from the control group.
+```{r}
+# light overall (Light, with control)
+pup2 <- glmmTMB(DaystoPupate ~ Light + (1|Rep), 
+        na.action = "na.fail", 
+        family = poisson(), 
+        data = df_pupation)
+
+summary(pup2)
+```
+
+
+
+**Table S4.** Days to pupation GLMM estimates with treatment (combining spectra and intensity 26 categories) as a fixed effect and replicate as a random effect (n = 1,158). Estimated coefficients 27 represent estimated differences from the control group.
+```{r}
+# treatment groups (treatment wth control)
+pup3 <- glmmTMB(DaystoPupate ~ Treatment + (1|Rep), 
+        na.action = "na.fail", 
+        family = poisson(), 
+        data = df_pupation)
+
+summary(pup3)
+```
+
+
+
+**Table S6.** Female days to emergence GLMM estimates, including spectra, intensity, and their 32 interaction as fixed effects, with replicate as a random effect. Controls are excluded from this 33 model (n = 513).
+```{r}
+# intensity-dependent (Light + Intensity, w/o control)
+e1f <- glmmTMB(DaystoEmerge ~ Light * Intensity + (1|Rep), 
+        na.action = "na.fail", 
+        family = poisson(), 
+        data = df_emergence_wocontrol %>% filter(Sex == 'F'))
+summary(e1f)
+
+```
+
+**Table S7.** Male days to emergence GLMM estimates, including spectra, intensity, and their 36 interaction, as fixed effects, with replicate as a random effect. Controls are excluded from this 37 model (n = 498).
+```{r}
+e1m <- glmmTMB(DaystoEmerge ~ Light * Intensity + (1|Rep), 
+        na.action = "na.fail", 
+        family = poisson(), 
+        data = df_emergence_wocontrol %>% filter(Sex == 'M'))
+
+summary(e1m)
+```
+
+
+
+**Table S8.** Female days to emergence GLMM estimates with spectra as fixed effect with levels 40 of HPS, LED, and Control, and replicate as a random effect (n = 559). Estimated coefficients 41 represent estimated differences from the control group.
+```{r}
+# light overall (Light, with control)
+e2f <- glmmTMB(DaystoEmerge ~ Light + (1|Rep), 
+        na.action = "na.fail", 
+        family = poisson(), 
+        data = df_emergence %>% filter(Sex == 'F'))
+summary(e2f)
+```
+
+**Table S9.** Male days to emergence GLMM estimates with spectra as fixed effect with levels of 44 HPS, LED, and Control, and replicate as a random effect (n = 555). Estimated coefficients 45 represent estimated differences from the control group.
+```{r}
+e2m <- glmmTMB(DaystoEmerge ~ Light + (1|Rep), 
+        na.action = "na.fail", 
+        family = poisson(), 
+        data = df_emergence %>% filter(Sex == 'M'))
+
+summary(e2m)
+```
+
+
+
+**Table S10.** Female days to emergence GLMM estimates with treatment (combining spectra 48 and intensity categories) as a fixed effect and replicate as a random effect (n = 559). Estimated 49 coefficients represent estimated differences from the control group.
+```{r}
+# treatment groups (treatment wth control)
+e3f <- glmmTMB(DaystoEmerge ~ Treatment + (1|Rep), 
+        na.action = "na.fail", 
+        family = poisson(), 
+        data = df_emergence %>% filter(Sex == 'F'))
+summary(e3f)
+```
+
+**Table S11.** Male days to emergence GLMM estimates with treatment (combining spectra and 52 intensity categories) as a fixed effect and replicate as a random effect (n = 555). Estimated 53 coefficients represent estimated differences from the control group.
+```{r}
+e3m <- glmmTMB(DaystoEmerge ~ Treatment + (1|Rep), 
+        na.action = "na.fail", 
+        family = poisson(), 
+        data = df_emergence %>% filter(Sex == 'M'))
+
+summary(e3m)
+```
+
+
+
+**MORTALITY ANALYSIS AND VISUALIZATION** 
+Summarize mortality proportions by treatment 
+```{r}
+summary_mortality <- df_mortality %>%
+  group_by(Treatment, Survival) %>%
+  summarize(count = n(), .groups = "drop") %>%
+  group_by(Treatment) %>%
+  mutate(percentage = count / sum(count) * 100) %>%
+  mutate(Treatment = factor(Treatment, levels = c("Control_0", "HPS_10", "HPS_30", 
+                                                  "HPS_60", "HPS_100", "HPS_200","LED_10", "LED_30", 
+                                                  "LED_60", "LED_100", "LED_200"))) 
+
+summary_mortality
+```
+
+Pearson’s Chi-squared test - reported in text 
+```{r}
+# Analyze data
+contingency_table <- table(df_mortality$Treatment, df_mortality$Survival)
+chisq_test_mor <- chisq.test(contingency_table)
+print(chisq_test_mor)
+```
+
+Logistic regression
+**Table S12.** Output of logistic regression with binomial distribution using glmmTMB on the 56 relationship between survival and treatment group. Each estimate is compared to the controls.
+```{r}
+# Fit logistic regression model
+logit_model <- glmmTMB(Survival ~ Treatment, family = binomial, data = df_mortality)
+
+# View summary of the model
+summary(logit_model)
+```
+
+**Figure 6.** Exposure to different types and intensities of ALAN did not affect the percentage of mosquito larvae that survived to adulthood.  
+```{r}
+m <- ggplot(summary_mortality, aes(x = Treatment, y = percentage, fill = factor(Survival))) +
+  geom_bar(stat = "identity", position = "stack", color = "black") +
+  labs(
+    title = "Mortality Percentage Across Treatments",
+    x = "Treatment",
+    y = "Percentage (%)",
+    fill = "Status"
+  ) +
+  scale_fill_manual(values = c("0" = "white", "1" = "black"),
+                    labels = c("0" = "Dead", "1" = "Survived")) +
+   scale_x_discrete(labels = function(x) gsub("_", "-", x))+
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+
+m
+```
+
+
