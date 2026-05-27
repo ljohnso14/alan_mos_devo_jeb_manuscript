@@ -112,7 +112,6 @@ df_mortality <- df_mortality %>%
 ```
 
 ## Creating summary tables of the pupation and emergence rates grouped by replicate and treatment
-Information included in supplementary information information 
 
 Total number of pupation observations 
 ```{r}
