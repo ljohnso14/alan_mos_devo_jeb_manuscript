@@ -9,6 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
 load packages
 ```{r}
 library(ggplot2)
@@ -17,6 +18,7 @@ library(tidyr)
 library(flextable)
 library(officer)
 library(glmmTMB)
+library(car)
 
 ```
 
@@ -60,7 +62,7 @@ temp_sum <- df_temp %>%
             Mean = mean(Temp),
             SD = sd(Temp)
             )
-temp_sum  
+temp_sum # not current values in manuscript; used excel calculations 
 ```
 
 Temperature ANOVA - reported in text  
@@ -112,6 +114,7 @@ df_mortality <- df_mortality %>%
 ```
 
 ## Creating summary tables of the pupation and emergence rates grouped by replicate and treatment
+Information included in supplementary information information 
 
 Total number of pupation observations 
 ```{r}
@@ -208,6 +211,31 @@ doc <- read_docx()
 doc <- body_add_flextable(doc, rep_sum_emerge_tab)
 
 #print(doc, target = "rep_sum_emerge_tab.docx")
+
+```
+
+**Revision** Summary of days to pupation and days to emerge groups by Light Type to calculate percentage difference
+```{r}
+
+a <-df_emergence %>%
+  group_by(Sex, Light) %>%
+  summarise(n = n(),
+            median = median(DaystoEmerge),
+            mean = mean(DaystoEmerge),
+            sd = sd(DaystoEmerge),
+            CV = (sd(DaystoEmerge, na.rm = TRUE) / mean(DaystoEmerge, na.rm = TRUE)) * 100)
+
+a
+
+b <-df_pupation %>%
+  group_by(Light) %>%
+  summarise(n = n(),
+            median = median(DaystoPupate),
+            mean = mean(DaystoPupate),
+            sd = sd(DaystoPupate),
+            CV = (sd(DaystoPupate, na.rm = TRUE) / mean(DaystoPupate, na.rm = TRUE)) * 100)
+
+b
 
 ```
 
@@ -550,4 +578,235 @@ m <- ggplot(summary_mortality, aes(x = Treatment, y = percentage, fill = factor(
 m
 ```
 
+
+**Revisions**
+Visualzing pupation and emergence data
+```{r}
+hist(df_pupation$DaystoPupate)
+
+f_emerg <- df_emergence %>% filter(Sex == "F")
+m_emerg <- df_emergence %>% filter(Sex == "M")
+
+hist(m_emerg$DaystoEmerge)
+hist(f_emerg$DaystoEmerge)
+```
+
+Conway-Maxwell-Poisson Distribution (Sellers et al. 2011)
+
+Model 1 - Light Type 
+Pupation
+```{r}
+
+p1r.c <- glmmTMB(
+  DaystoPupate ~ Light + (1|Rep),
+  family = compois(link = "log"),
+  data = df_pupation
+)
+
+p1r.d <- glmmTMB(
+  DaystoPupate ~ Light + (1|Rep),
+  dispformula = ~ Light,
+  family = compois(link = "log"),
+  data = df_pupation 
+)
+
+summary(p1r.c) # the dispersion model p values track with the CV graph
+summary(p1r.d)
+
+anova(p1r.c, p1r.d) # dsip is better
+```
+
+Model 1 - Light Type 
+Female Emergence
+```{r}
+
+ef1r.c <- glmmTMB(
+  DaystoEmerge ~ Light + (1|Rep),
+  family = compois(link = "log"),
+  data = df_emergence %>% filter(Sex == 'F')
+)
+
+ef1r.d <- glmmTMB(
+  DaystoEmerge ~ Light + (1|Rep),
+  dispformula = ~ Light,
+  family = compois(link = "log"),
+  data = df_emergence %>% filter(Sex == 'F')
+)
+
+summary(ef1r.c) # the dispersion model p values track with the CV graph
+summary(ef1r.d)
+
+anova(ef1r.c, ef1r.d) # dsip is better
+```
+
+Model 1 - Light Type 
+Male Emergence
+```{r}
+
+em1r.c <- glmmTMB(
+  DaystoEmerge ~ Light + (1|Rep),
+  family = compois(link = "log"),
+  data = df_emergence %>% filter(Sex == 'M')
+)
+
+em1r.d <- glmmTMB(
+  DaystoEmerge ~ Light + (1|Rep),
+  dispformula = ~ Light,
+  family = compois(link = "log"),
+  data = df_emergence %>% filter(Sex == 'M')
+)
+
+summary(em1r.c) # the dispersion model p values track with the CV graph
+summary(em1r.d)
+
+anova(em1r.c, em1r.d) # dsip is better
+```
+
+
+Model 2 - Light Type * Intensity 
+Pupation
+```{r}
+# Light by Intensity without control
+p2r.c <- glmmTMB(
+  DaystoPupate ~ Light*Intensity + (1|Rep),
+  family = compois(link = "log"),
+  data = df_pupation_wocontrol 
+)
+
+p2r.d <- glmmTMB(
+  DaystoPupate ~ Light*Intensity + (1|Rep),
+  dispformula = ~ Light*Intensity,
+  family = compois(link = "log"),
+  data = df_pupation_wocontrol 
+)
+
+
+summary(p2r.c) # the dispersion model p values track with the CV graph
+summary(p2r.d)
+
+anova(p2r.c, p2r.d) 
+```
+Model 2 - Light Type * Intensity 
+Female Emergence
+```{r}
+# Light by Intensity without control
+ef2r.c <- glmmTMB(
+  DaystoEmerge ~ Light*Intensity + (1|Rep),
+  family = compois(link = "log"),
+  data = df_emergence_wocontrol %>% filter(Sex == 'F')
+)
+
+ef2r.d <- glmmTMB(
+  DaystoEmerge ~ Light*Intensity + (1|Rep),
+  dispformula = ~ Light*Intensity,
+  family = compois(link = "log"),
+  data = df_emergence_wocontrol %>% filter(Sex == 'F')
+)
+
+
+summary(ef2r.c) # the dispersion model p values track with the CV graph
+summary(ef2r.d)
+
+anova(ef2r.c, ef2r.d) 
+```
+
+Model 2 - Light Type * Intensity 
+Male Emergence
+```{r}
+# Light by Intensity without control
+em2r.c <- glmmTMB(
+  DaystoEmerge ~ Light*Intensity + (1|Rep),
+  family = compois(link = "log"),
+  data = df_emergence_wocontrol %>% filter(Sex == 'M')
+)
+
+em2r.d <- glmmTMB(
+  DaystoEmerge ~ Light*Intensity + (1|Rep),
+  dispformula = ~ Light*Intensity,
+  family = compois(link = "log"),
+  data = df_emergence_wocontrol %>% filter(Sex == 'M')
+)
+
+
+summary(em2r.c) # the dispersion model p values track with the CV graph
+summary(em2r.d)
+
+anova(em2r.c, em2r.d) 
+```
+
+
+Model 3 - 11 factor light type and intensity treatment groups
+Pupation
+```{r}
+# 11 factor treatment group 
+p3r.c <- glmmTMB(
+  DaystoPupate ~ Treatment + (1|Rep),
+  family = compois(link = "log"),
+  data = df_pupation 
+)
+
+p3r.d <- glmmTMB(
+  DaystoPupate ~ Treatment + (1|Rep),
+  dispformula = ~ Treatment,
+  family = compois(link = "log"),
+  data = df_pupation 
+)
+
+summary(p3r.c) # the dispersion model p values track with the CV graph
+summary(p3r.d)
+
+anova(p3r.c, p3r.d) # dsip is better
+
+
+```
+
+Model 3 - 11 factor light type and intensity treatment groups
+Female Emergence
+```{r}
+# 11 factor treatment group 
+ef3r.c <- glmmTMB(
+  DaystoEmerge ~ Treatment + (1|Rep),
+  family = compois(link = "log"),
+  data = df_emergence %>% filter(Sex == 'F')
+)
+
+ef3r.d <- glmmTMB(
+  DaystoEmerge ~ Treatment + (1|Rep),
+  dispformula = ~ Treatment,
+  family = compois(link = "log"),
+  data = df_emergence %>% filter(Sex == 'F')
+)
+
+summary(ef3r.c) # the dispersion model p values track with the CV graph
+summary(ef3r.d)
+
+anova(ef3r.c, ef3r.d) # dsip is better
+
+
+```
+
+Model 3 - 11 factor light type and intensity treatment groups
+Male Emergence
+```{r}
+# 11 factor treatment group 
+em3r.c <- glmmTMB(
+  DaystoEmerge ~ Treatment + (1|Rep),
+  family = compois(link = "log"),
+  data = df_emergence %>% filter(Sex == 'M')
+)
+
+em3r.d <- glmmTMB(
+  DaystoEmerge ~ Treatment + (1|Rep),
+  dispformula = ~ Treatment,
+  family = compois(link = "log"),
+  data = df_emergence %>% filter(Sex == 'M')
+)
+
+summary(em3r.c) # the dispersion model p values track with the CV graph
+summary(em3r.d)
+
+anova(em3r.c, em3r.d) # dsip is better
+
+
+```
 
